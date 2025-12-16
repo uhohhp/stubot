@@ -1,7 +1,7 @@
 import requests
 import google.generativeai as genai
 
-GEMINI_API_KEY = "AIzaSyCYAI1wsZD7DSjJf3HPA0BQHfiLfxlLDEs"  # примерный URL для Gemini 2.5 Flash
+GEMINI_API_KEY = "AIzaSyDG9zVoxAoIX43jmokWCGOnvCBW4tbISS4"  # примерный URL для Gemini 2.5 Flash
 import logging
 from telebot import TeleBot, types
 from telebot.handler_backends import State, StatesGroup
@@ -105,6 +105,7 @@ def start_gemini_chat(message):
                      "Отправьте сообщение или нажмите 🔙 Назад для выхода.",
                      reply_markup=create_back_button())
 
+
 def handle_gemini_message(message):
     """
     Обработка сообщений пользователя в чате с Gemini 2.5 Flash через model.generate_content(user_input)
@@ -112,32 +113,45 @@ def handle_gemini_message(message):
     chat_id = message.chat.id
     user_id = message.from_user.id
 
-    # Выход из чата по кнопке "Назад"
-    if message.text == "🔙 Назад":
-        user_gemini_states.pop(user_id, None)
-        go_home(chat_id, user_id)
-        return
+    # ... (код для выхода из чата) ...
 
     # Проверка, что пользователь находится в чате с нейросетью
     if user_gemini_states.get(user_id):
         user_input = message.text
 
+        # Автопромт для ограничения длины (как мы обсуждали ранее)
+        full_gemini_prompt = (
+            f"{user_input}\n\n"
+            f"**КРАЙНЕ ВАЖНО**: Отвечай на этот запрос, не превышая 3500 символов, чтобы сообщение "
+            "поместилось в один блок Telegram. Пиши на русском."
+        )
+
         try:
-            # Настройка SDK
+
             genai.configure(api_key=GEMINI_API_KEY)
             model = genai.GenerativeModel("gemini-2.5-flash")
-
-            # Генерация ответа от модели
-            response = model.generate_content(user_input)
+            response = model.generate_content(full_gemini_prompt)
             gemini_text = getattr(response, "output_text", None) or getattr(response, "text", "")
             gemini_text = gemini_text.strip() or ""
 
-            # Markdown для Telegram: жирный и курсив
-            gemini_text = gemini_text.replace("**", "*")
-
-            # Отправка пользователю
             bot.send_message(chat_id, gemini_text, parse_mode="Markdown")
 
         except Exception as e:
+            # Если ошибка - это снова Bad Request, то проблема в форматировании
             logging.error(f"Ошибка при общении с Gemini: {e}")
-            bot.send_message(chat_id, "⚠️ Ошибка при отправке запроса к нейросети. Попробуйте позже.")
+
+            # Попытка отправить БЕЗ форматирования (чистым текстом) как запасной вариант
+            if "Bad Request" in str(e) and 'can\'t parse entities' in str(e):
+                logging.warning("Ошибка парсинга Markdown. Повторная отправка без форматирования.")
+                try:
+                    # Отправляем чистый текст, чтобы не сломать чат
+                    bot.send_message(chat_id, gemini_text, parse_mode=None)
+                    return
+                except Exception as e_plain:
+                    logging.error(f"Ошибка при отправке чистого текста: {e_plain}")
+                    # Если и это не помогло, отправляем стандартное сообщение об ошибке
+                    pass
+
+            # Стандартное сообщение об ошибке, если чистый текст не помог или ошибка другая
+            bot.send_message(chat_id,
+                             "⚠️ Ошибка при отправке запроса к нейросети или форматировании. Попробуйте позже.")

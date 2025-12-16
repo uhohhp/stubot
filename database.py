@@ -59,6 +59,26 @@ def get_lecture(cur, course, topic):
 
 
 @with_connection
+def get_lecture_by_id(cur, lecture_id):
+    """
+    Получает все данные лекции по ее уникальному ID.
+    Необходима для работы с короткими callback_data.
+    """
+    lecture_id = int(lecture_id)
+    logging.info(f"get_lecture_by_id: id={lecture_id}")
+    cur.execute("SELECT * FROM lectures WHERE id=?", (lecture_id,))
+    lecture = cur.fetchone()
+    if lecture:
+        lecture = list(lecture)
+        # Обработка пустых file_id, как в get_lecture
+        for i in range(3, 7):
+            if lecture[i] in ('None', '', None):
+                lecture[i] = None
+        return tuple(lecture)
+    return None
+
+
+@with_connection
 def add_lecture(cur, course, topic, audio_file_id=None, document_file_id=None,
                 presentation_file_id=None, photo_file_id=None):
     course = int(course)
